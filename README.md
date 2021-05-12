@@ -88,6 +88,7 @@ This pattern should live side-by-side with existing patterns to check errors and
 func AddFoo(desired string) (actual string, err error) {
     defer fmt.Handlef(&err, "Add foo '%v'", desired)
     try if alreadyExists(desired)? {
+        actual = desired
         return
     }
     err = insertFoo(desired)
