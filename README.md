@@ -43,8 +43,6 @@ Why is this better?
     try sum = fmt.Sprintf("%d", strconv.Atoi(a)? + strconv.Atoi(b)?)
     ```
 
-Why even have the `?` then? We could simply allow abandonable statements to include expressions that drop the final (error) return value silently. However, one of go's strengths is forcing thought around error handling. The programmer must still think about each case and decide whether they want to handle an error explictly or simply return (and possibly wrap) the error. If a programmer forgets that a function may return an error, we want the complier to remind them.
-
 ## Handling errors through `defer`
 
 In the spirit of changing as little as necessary, not much has changed here over the original proposal.
@@ -53,3 +51,86 @@ The standard helper function should allow the programmer to choose to wrap the e
 
 * `fmt.Handlef` has the same behavior as `fmt.HandleErrorf` from the original proposal
 * `fmt.Wrapf` is almost the same, but wraps the existing error, as if using the "%w" verb instead of "%v"
+
+## Testing
+
+Inside a `TestXxx(t *testing.T)` function, `try` can also be used, with slightly different behavior. In this case,
+
+```
+try a := f()?
+```
+
+would be equivalanet to
+
+```
+a, err := f()
+if err != nil {
+    t.Fatal(err)
+}
+```
+
+As with the primary use of `try`, this allows the simplest cases to be written concisely. The non-trival cases would be unchanged from today. For example, if you're expecting an error in the test case, you'd examine it explicitly, the same as you would today:
+
+```
+a, err := f()
+if err == nil {
+    t.Fatal("We expected an error but didn't get one!")
+}
+```
+
+## Disussion
+
+This proposal is highlighting the cases where error handling would be different than in current Go implementations, but it's also worth talking about what wouldn't be different. Here, we're providing quality-of-life improvements in cases where the program can't meaningfully continue, and should instead simply halt the execution of the function, and return an error up the stack, probably wrapped with additional context.
+
+This pattern should live side-by-side with existing patterns to check errors and handle them where appropriate.
+
+```
+func AddFoo(name string) (err error) {
+    defer fmt.Handlef(&err, "Add foo '%v'", name)
+    try if !alreadyExists(name)? {
+        err = insertFoo(name)
+        var ine *InvalidNameError
+        if ok := errors.As(err, &ine); ok {
+            s := getSafeName()
+            defer fmt.Handlef(&err, "'%v' is invalid. Using backup name '%v'", name, s)
+            try insertFoo(s)?
+            err = nil // if we got here, we recovered from the invalid name error
+        }
+    }
+}
+```
+
+## Alternatives considered
+
+### `try` allows silent dropping of final error value
+
+Why even have the `?`? We could simply allow abandonable statements to include expressions that drop the final (error) return value silently:
+
+```
+try sum = fmt.Sprintf("%d", strconv.Atoi(a) + strconv.Atoi(b))
+```
+
+However, one of go's strengths is forcing thought around error handling. The programmer must still think about each case and decide whether they want to handle an error explictly or simply return (and possibly wrap) the error. If a programmer forgets that a function may return an error, we want the complier to remind them. Thus, we should require an explicit `?` each time an error is dropped.
+
+### `try` can be used in a block.
+
+We could allow something like:
+
+```
+try {
+    ai := strconv.Atoi(a)?
+    bi := strconv.Atoi(b)?
+    sum = fmt.Sprintf("%d", ai + bi)
+}
+```
+If a programmer is going to make many calls that might return errors, this would allow them to handle them with one `try` declaration. However, it becomes easy to take this too far. In an extreme example, a programmer could always put the logic of every function inside a `try` block, so they can use the `?` operator whereever they want within it:
+
+```
+func f() error {
+    try {
+        // ...
+    }
+}
+```
+
+This would allow them to hide `?`s throughout the function and make it harder to see where code execution might diverge. At this point, we might as well drop the `try` completely and just use the `?` operator (which has already been proposed). This proposal instead argues that each statement where code execution might end must be highlighted specifically with the `try` keyword.
