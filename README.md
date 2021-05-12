@@ -85,18 +85,25 @@ This proposal is highlighting the cases where error handling would be different 
 This pattern should live side-by-side with existing patterns to check errors and handle them where appropriate.
 
 ```
-func AddFoo(name string) (err error) {
-    defer fmt.Handlef(&err, "Add foo '%v'", name)
-    try if !alreadyExists(name)? {
-        err = insertFoo(name)
-        var ine *InvalidNameError
-        if ok := errors.As(err, &ine); ok {
-            s := getSafeName()
-            defer fmt.Handlef(&err, "'%v' is invalid. Using backup name '%v'", name, s)
-            try insertFoo(s)?
-            err = nil // if we got here, we recovered from the invalid name error
-        }
+func AddFoo(desired string) (actual string, err error) {
+    defer fmt.Handlef(&err, "Add foo '%v'", desired)
+    try if alreadyExists(desired)? {
+        return
     }
+    err = insertFoo(desired)
+    var ine *InvalidNameError
+    if ok := errors.As(err, &ine); ok {
+        s := getSafeName()
+        defer fmt.Handlef(&err, "'%v' is invalid. Using '%v'", desired, s)
+        try insertFoo(s)?
+        actual = s
+        err = nil
+        return
+    } else if err != nil {
+        return
+    }
+    actual = desired
+    return
 }
 ```
 
